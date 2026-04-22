@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Water Works CSI Analyzer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --blue: #1a6fa8;
+    --blue-light: #e8f4fd;
+    --green: #2e7d32;
+    --orange: #e65100;
+    --gray: #f5f7fa;
+    --border: #dde3ea;
+    --text: #1c2b3a;
+    --muted: #6b7c93;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: var(--gray); color: var(--text); }
+
+  header {
+    background: var(--blue);
+    color: white;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  header h1 { font-size: 1.3rem; font-weight: 600; }
+  header span { font-size: 0.9rem; opacity: 0.8; }
+
+  nav {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    padding: 0 32px;
+  }
+  nav button {
+    background: none;
+    border: none;
+    padding: 14px 20px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  nav button.active, nav button:hover {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+  }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .card {
+    background: white;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 1.1rem; color: var(--blue); margin-bottom: 16px; }
+  .card h3 { font-size: 0.95rem; color: var(--text); margin: 16px 0 10px; }
+
+  /* Upload */
+  .upload-zone {
+    border: 2px dashed var(--blue);
+    border-radius: 10px;
+    padding: 48px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .upload-zone:hover { background: var(--blue-light); }
+  .upload-zone input { display: none; }
+  .upload-zone .icon { font-size: 3rem; margin-bottom: 12px; }
+  .upload-zone p { color: var(--muted); margin-top: 8px; font-size: 0.9rem; }
+
+  .btn {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 10px 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #155d8e; }
+  .btn-green { background: var(--green); }
+  .btn-green:hover { background: #1b5e20; }
+  .btn:disabled { background: #aaa; cursor: not-allowed; }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+  }
+  .alert-warn { background: #fff3e0; border-left: 4px solid #ff9800; color: #7c4700; }
+  .alert-info { background: var(--blue-light); border-left: 4px solid var(--blue); color: #0d3c5e; }
+  .alert-success { background: #e8f5e9; border-left: 4px solid var(--green); color: #1b5e20; }
+
+  /* Tables */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { background: var(--blue); color: white; padding: 9px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: var(--blue-light); }
+  .sig-yes { color: var(--green); font-weight: 600; }
+  .sig-no { color: var(--muted); }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .kpi {
+    background: var(--blue-light);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+  }
+  .kpi .val { font-size: 1.8rem; font-weight: 700; color: var(--blue); }
+  .kpi .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .kpi.green .val { color: var(--green); }
+  .kpi.orange .val { color: var(--orange); }
+
+  /* Insights */
+  .insight-list { list-style: none; }
+  .insight-list li {
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: var(--blue-light);
+    border-left: 4px solid var(--blue);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  /* Charts */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-box { background: white; border-radius: 10px; border: 1px solid var(--border); padding: 20px; }
+  .chart-box h3 { font-size: 0.9rem; color: var(--muted); margin-bottom: 14px; }
+  canvas { max-height: 300px; }
+
+  .chart-type-sel {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 0.82rem;
+    color: var(--text);
+    background: white;
+    cursor: pointer;
+  }
+  .chart-type-sel:focus { outline: none; border-color: var(--blue); }
+
+  /* Spinner */
+  .spinner {
+    display: none;
+    width: 36px; height: 36px;
+    border: 4px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 20px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .badge-green { background: #e8f5e9; color: var(--green); }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-orange { background: #fff3e0; color: var(--orange); }
+  .badge-red { background: #ffebee; color: #c62828; }
+
+  #upload-status { margin-top: 16px; }
+  #file-name { margin-top: 10px; font-size: 0.88rem; color: var(--muted); }
+
+  .mapping-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .mapping-header {
+    background: var(--blue);
+    color: white;
+    padding: 9px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .mapping-row {
+    display: contents;
+  }
+  .mapping-row > div {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+  }
+  .mapping-row:last-child > div { border-bottom: none; }
+  .mapping-row > div:nth-child(2) { background: #fafbfc; }
+  .mapping-row select {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.84rem;
+    background: white;
+  }
+  .mapping-row select.auto-matched { border-color: var(--green); background: #f1f8f1; }
+  .dim-label {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+  .dim-SD { background:#e3f2fd; color:#1565c0; }
+  .dim-TQ { background:#e8f5e9; color:#2e7d32; }
+  .dim-PP { background:#fff3e0; color:#e65100; }
+  .dim-COM { background:#f3e5f5; color:#6a1b9a; }
+  .dim-SAT { background:#fce4ec; color:#880e4f; }
+  .dim-NPS { background:#e0f7fa; color:#006064; }
+
+  /* Column reference panel */
+  .col-ref-box {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+  }
+  .col-ref-title { font-size: 0.83rem; color: var(--muted); margin-bottom: 10px; }
+  .col-ref-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .col-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-pill:hover { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+  .col-pill.used { background: #e8f5e9; border-color: var(--green); color: var(--green); }
+  .col-pill.copied { background: var(--blue); color: white; border-color: var(--blue); }
+  .map-hint { font-size: 0.75rem; color: var(--green); margin-top: 3px; }
+
+  /* Formulas */
+  .formula-block {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 12px 0;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  .formula-block .formula-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--blue);
+    margin-bottom: 10px;
+  }
+  .formula-eq {
+    font-family: 'Courier New', monospace;
+    font-size: 1.05rem;
+    color: var(--text);
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 16px;
+    margin: 8px 0;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .formula-note {
+    font-size: 0.83rem;
+    color: var(--muted);
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+  .formula-note span {
+    display: inline-block;
+    background: var(--blue-light);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: var(--blue);
+    margin: 1px 2px;
+  }
+  .interp-table { width:100%; border-collapse:collapse; font-size:0.87rem; margin-top:10px; }
+  .interp-table th { background:var(--blue); color:white; padding:7px 12px; text-align:left; }
+  .interp-table td { padding:7px 12px; border-bottom:1px solid var(--border); }
+  .formula-section-divider {
+    border: none;
+    border-top: 2px solid var(--border);
+    margin: 24px 0 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>💧</div>
+  <div>
+    <h1>Water Works Corporation — CSI Analyzer</h1>
+    <span>Customer Satisfaction Survey Analysis Dashboard</span>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('upload', this)">📁 Upload Data</button>
+  <button onclick="showTab('mapping', this)">🔗 Column Mapping</button>
+  <button onclick="showTab('preview', this)">🔍 Data Preview</button>
+  <button onclick="showTab('analysis', this)">📊 Analysis Results</button>
+  <button onclick="showTab('charts', this)">📈 Charts</button>
+  <button onclick="showTab('formulas', this)">🧮 Formulas</button>
+  <button onclick="showTab('report', this)">📄 Download Report</button>
+</nav>
+
+<main>
+
+<!-- UPLOAD -->
+<div id="tab-upload" class="section active">
+  <div class="card">
+    <h2>Upload Survey Data</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:20px;">
+      Upload an Excel (.xlsx) or CSV file containing Likert-scale survey responses (1–5).
+      Required columns: SD1–SD6, TQ1–TQ5, PP1–PP5, COM1–COM5, SAT1–SAT3. Optional: NPS.
+    </p>
+    <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+      <input type="file" id="file-input" accept=".xlsx,.csv" onchange="handleFileSelect(event)"/>
+      <div class="icon">📂</div>
+      <strong>Click to browse or drag & drop</strong>
+      <p>Supported formats: .xlsx, .csv</p>
+    </div>
+    <div id="file-name"></div>
+    <div id="upload-status"></div>
+    <div class="spinner" id="spinner"></div>
+    <br/>
+    <button class="btn" id="upload-btn" onclick="uploadFile()" disabled>Analyze Data</button>  </div>
+
+  <div class="card">
+    <h2>Expected Data Format</h2>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:12px;">
+      Based on the Water Works Corporation KoboToolbox questionnaire (Section 2 Q5, Section 3 Q6–Q7).
+    </p>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th>Column</th><th>Questionnaire Item</th><th>Dimension</th><th>Scale</th></tr>
+      <tr><td>SD1</td><td>Q5.8 – Service delivery transparency, efficiency & response speed</td><td>Service Delivery</td><td>1–5</td></tr>
+      <tr><td>SD2</td><td>Q5.9 – Staff competence, knowledge & skills</td><td>Service Delivery</td><td>1–5</td></tr>
+      <tr><td>SD3</td><td>Q5.10 – Staff professionalism & ethics</td><td>Service Delivery</td><td>1–5</td></tr>
+      <tr><td>SD4</td><td>Q5.11 – Understanding & fulfilling client needs</td><td>Service Delivery</td><td>1–5</td></tr>
+      <tr><td>TQ1</td><td>Q5.5 – Construction quality & engineering standards</td><td>Technical Quality</td><td>1–5</td></tr>
+      <tr><td>TQ2</td><td>Q5.6 – Material quality</td><td>Technical Quality</td><td>1–5</td></tr>
+      <tr><td>TQ3</td><td>Q5.7 – Technical problem-solving capability</td><td>Technical Quality</td><td>1–5</td></tr>
+      <tr><td>PP1</td><td>Q5.1 – Completion on schedule</td><td>Project Performance</td><td>1–5</td></tr>
+      <tr><td>PP2</td><td>Q5.2 – Completion within budget</td><td>Project Performance</td><td>1–5</td></tr>
+      <tr><td>PP3</td><td>Q5.3 – Delay management effectiveness</td><td>Project Performance</td><td>1–5</td></tr>
+      <tr><td>PP4</td><td>Q5.4 – Resource utilization & scope control</td><td>Project Performance</td><td>1–5</td></tr>
+      <tr><td>COM1</td><td>Q5.12 – Report timeliness, clarity & quality</td><td>Communication</td><td>1–5</td></tr>
+      <tr><td>COM2</td><td>Q5.13 – Stakeholder meeting effectiveness</td><td>Communication</td><td>1–5</td></tr>
+      <tr><td>COM3</td><td>Q5.14 – Post-handover support (Retention Period)</td><td>Communication</td><td>1–5</td></tr>
+      <tr><td>SAT1</td><td>Q6.1 – Needs & expectations fulfillment</td><td>Customer Satisfaction</td><td>1–5</td></tr>
+      <tr><td>SAT2</td><td>Q6.2 – Overall service quality</td><td>Customer Satisfaction</td><td>1–5</td></tr>
+      <tr><td>SAT3</td><td>Q6.3 – Overall working relationship</td><td>Customer Satisfaction</td><td>1–5</td></tr>
+      <tr><td>NPS</td><td>Q7 – Likelihood to recommend (optional)</td><td>NPS</td><td>0–10</td></tr>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- MAPPING -->
+<div id="tab-mapping" class="section">
+  <div class="card">
+    <h2>🔗 Column Mapping</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px;">
+      Match your file's columns to the expected survey variables. Auto-suggestions are pre-filled where possible.
+      NPS is optional — leave it as "— Skip —" if not collected.
+    </p>
+    <div id="mapping-alert"></div>
+    <div id="mapping-form"></div>
+    <br/>
+    <button class="btn btn-green" onclick="confirmMapping()">✓ Confirm Mapping &amp; Run Analysis</button>
+    <div class="spinner" id="mapping-spinner"></div>
+    <div id="mapping-status" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<!-- PREVIEW -->
+<div id="tab-preview" class="section">
+  <div class="card">
+    <h2>Data Preview</h2>
+    <div id="preview-info" style="color:var(--muted);font-size:0.9rem;margin-bottom:12px;"></div>
+    <div class="tbl-wrap" id="preview-table"></div>
+    <div id="preview-pagination" style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:0.88rem;color:var(--muted);">
+      <button class="btn" id="prev-page" onclick="changePage(-1)">← Prev</button>
+      <span id="page-info"></span>
+      <button class="btn" id="next-page" onclick="changePage(1)">Next →</button>
+      <span style="margin-left:auto;">Rows per page:
+        <select onchange="changePageSize(this.value)" style="margin-left:6px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYSIS -->
+<div id="tab-analysis" class="section">
+  <!-- KPIs -->
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <!-- Insights -->
+  <div class="card" id="insights-card" style="display:none">
+    <h2>🔍 Auto Insights</h2>
+    <ul class="insight-list" id="insights-list"></ul>
+  </div>
+
+  <!-- Descriptive -->
+  <div class="card">
+    <h2>Descriptive Statistics</h2>
+    <h3>By Dimension</h3>
+    <div class="tbl-wrap" id="desc-dims-table"></div>
+    <h3>By Item</h3>
+    <div class="tbl-wrap" id="desc-items-table"></div>
+  </div>
+
+  <!-- CSI -->
+  <div class="card">
+    <h2>Customer Satisfaction Index (CSI)</h2>
+    <div class="tbl-wrap" id="csi-table"></div>
+  </div>
+
+  <!-- Reliability -->
+  <div class="card">
+    <h2>Reliability Analysis (Cronbach's Alpha)</h2>
+    <div class="tbl-wrap" id="reliability-table"></div>
+  </div>
+
+  <!-- Regression -->
+  <div class="card">
+    <h2>Multiple Linear Regression</h2>
+    <div id="regression-summary" style="font-size:0.9rem;color:var(--muted);margin-bottom:12px;"></div>
+    <div class="tbl-wrap" id="regression-table"></div>
+  </div>
+
+  <!-- Correlation -->
+  <div class="card">
+    <h2>Correlation Matrix</h2>
+    <div class="tbl-wrap" id="correlation-table"></div>
+  </div>
+
+  <!-- NPS -->
+  <div class="card" id="nps-card" style="display:none">
+    <h2>Net Promoter Score (NPS)</h2>
+    <div id="nps-content"></div>
+  </div>
+</div>
+
+<!-- CHARTS -->
+<div id="tab-charts" class="section">
+  <div class="chart-grid">
+    <div class="chart-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0">Mean Score per Dimension</h3>
+        <select class="chart-type-sel" onchange="changeChartType('mean', this.value)" id="type-mean"></select>
+      </div>
+      <canvas id="chart-mean"></canvas>
+    </div>
+    <div class="chart-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0">CSI per Dimension (%)</h3>
+        <select class="chart-type-sel" onchange="changeChartType('csi', this.value)" id="type-csi"></select>
+      </div>
+      <canvas id="chart-csi"></canvas>
+    </div>
+    <div class="chart-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0">Regression Coefficients (Beta)</h3>
+        <select class="chart-type-sel" onchange="changeChartType('reg', this.value)" id="type-reg"></select>
+      </div>
+      <canvas id="chart-reg"></canvas>
+    </div>
+    <div class="chart-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0">Cronbach's Alpha by Dimension</h3>
+        <select class="chart-type-sel" onchange="changeChartType('alpha', this.value)" id="type-alpha"></select>
+      </div>
+      <canvas id="chart-alpha"></canvas>
+    </div>
+    <div class="chart-box" style="grid-column: span 2">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h3 style="margin:0">Correlation Heatmap</h3>
+        <span style="font-size:0.78rem;color:var(--muted);">Fixed — scatter matrix</span>
+      </div>
+      <canvas id="chart-corr"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- FORMULAS -->
+<div id="tab-formulas" class="section">
+
+  <!-- 1. Descriptive -->
+  <div class="card">
+    <h2>1. Descriptive Statistics</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">Mean (Average Score)</div>
+      <code class="formula-eq">x̄ = (Σ xᵢ) / n</code>
+      <p class="formula-note">
+        <span>xᵢ</span> = individual response value &nbsp;|&nbsp;
+        <span>n</span> = number of respondents<br>
+        Computed per item (e.g. SD1, TQ2) and per dimension (average of all items in that group).
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Standard Deviation</div>
+      <code class="formula-eq">s = √[ Σ(xᵢ − x̄)² / (n − 1) ]</code>
+      <p class="formula-note">
+        Sample standard deviation (Bessel's correction, <span>n−1</span> denominator).<br>
+        Measures spread of responses around the mean. Higher value = more disagreement among respondents.
+      </p>
+    </div>
+  </div>
+
+  <!-- 2. CSI -->
+  <div class="card">
+    <h2>2. Customer Satisfaction Index (CSI)</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">Dimension Mean Score</div>
+      <code class="formula-eq">Mean_dim = (Σ all item scores in dimension) / (k × n)</code>
+      <p class="formula-note">
+        <span>k</span> = number of items in the dimension &nbsp;|&nbsp;
+        <span>n</span> = number of respondents
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">CSI per Dimension</div>
+      <code class="formula-eq">CSI (%) = (Mean_dim / 5) × 100</code>
+      <p class="formula-note">
+        Scales the mean score (1–5) to a percentage (0–100%).<br>
+        A score of 5 = 100% (maximum satisfaction).
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Overall CSI</div>
+      <code class="formula-eq">Overall CSI (%) = (Mean of all dimension means / 5) × 100</code>
+      <p class="formula-note">
+        Simple average across all five dimensions (SD, TQ, PP, COM, SAT).
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Interpretation Scale</div>
+      <table class="interp-table">
+        <tr><th>CSI Range</th><th>Interpretation</th></tr>
+        <tr><td>80% – 100%</td><td>Very Satisfied</td></tr>
+        <tr><td>60% – 79%</td><td>Satisfied</td></tr>
+        <tr><td>40% – 59%</td><td>Neutral</td></tr>
+        <tr><td>&lt; 40%</td><td>Dissatisfied</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 3. Reliability -->
+  <div class="card">
+    <h2>3. Reliability Analysis — Cronbach's Alpha</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">Cronbach's Alpha (α)</div>
+      <code class="formula-eq">α = (k / (k − 1)) × (1 − Σσᵢ² / σ²_total)</code>
+      <p class="formula-note">
+        <span>k</span> = number of items in the scale<br>
+        <span>Σσᵢ²</span> = sum of individual item variances<br>
+        <span>σ²_total</span> = variance of the total (sum) score across all items<br><br>
+        Measures internal consistency — how closely related the items in a dimension are.
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Interpretation Scale</div>
+      <table class="interp-table">
+        <tr><th>Alpha (α)</th><th>Interpretation</th></tr>
+        <tr><td>α ≥ 0.9</td><td>Excellent</td></tr>
+        <tr><td>0.8 ≤ α &lt; 0.9</td><td>Good</td></tr>
+        <tr><td>0.7 ≤ α &lt; 0.8</td><td>Acceptable</td></tr>
+        <tr><td>0.6 ≤ α &lt; 0.7</td><td>Questionable</td></tr>
+        <tr><td>α &lt; 0.6</td><td>Poor</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- 4. Regression -->
+  <div class="card">
+    <h2>4. Multiple Linear Regression</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">Regression Model</div>
+      <code class="formula-eq">SAT = β₀ + β₁·SD + β₂·TQ + β₃·PP + β₄·COM + ε</code>
+      <p class="formula-note">
+        <span>SAT</span> = mean Customer Satisfaction score (dependent variable)<br>
+        <span>SD, TQ, PP, COM</span> = mean dimension scores (independent variables)<br>
+        <span>β₀</span> = intercept (constant)<br>
+        <span>β₁–β₄</span> = regression coefficients (effect size per unit increase)<br>
+        <span>ε</span> = error term
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Coefficient of Determination (R²)</div>
+      <code class="formula-eq">R² = 1 − (SS_res / SS_tot)</code>
+      <p class="formula-note">
+        <span>SS_res</span> = Σ(yᵢ − ŷᵢ)² — residual sum of squares<br>
+        <span>SS_tot</span> = Σ(yᵢ − ȳ)² — total sum of squares<br>
+        Proportion of variance in SAT explained by the predictors. Range: 0–1.
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">Adjusted R²</div>
+      <code class="formula-eq">Adj. R² = 1 − [(1 − R²)(n − 1) / (n − k − 1)]</code>
+      <p class="formula-note">
+        <span>n</span> = number of observations &nbsp;|&nbsp; <span>k</span> = number of predictors<br>
+        Penalizes for adding non-informative predictors. Preferred over R² for model comparison.
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">F-Statistic (ANOVA)</div>
+      <code class="formula-eq">F = (SS_reg / k) / (SS_res / (n − k − 1))</code>
+      <p class="formula-note">
+        Tests whether the overall model is statistically significant.<br>
+        If <span>p &lt; 0.05</span>, the model explains a significant portion of variance in SAT.
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">t-Statistic (per coefficient)</div>
+      <code class="formula-eq">t = βᵢ / SE(βᵢ)</code>
+      <p class="formula-note">
+        <span>SE(βᵢ)</span> = standard error of the coefficient<br>
+        Used to test whether each predictor's coefficient is significantly different from zero.<br>
+        A predictor is significant if its <span>p-value &lt; 0.05</span>.
+      </p>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">OLS Estimation (Ordinary Least Squares)</div>
+      <code class="formula-eq">β̂ = (XᵀX)⁻¹ Xᵀy</code>
+      <p class="formula-note">
+        <span>X</span> = design matrix (predictors + intercept column)<br>
+        <span>y</span> = response vector (SAT scores)<br>
+        Minimizes the sum of squared residuals: <span>Σ(yᵢ − ŷᵢ)²</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- 5. Correlation -->
+  <div class="card">
+    <h2>5. Pearson Correlation</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">Pearson Correlation Coefficient (r)</div>
+      <code class="formula-eq">r(X,Y) = Σ[(xᵢ−x̄)(yᵢ−ȳ)] / √[Σ(xᵢ−x̄)² · Σ(yᵢ−ȳ)²]</code>
+      <p class="formula-note">
+        Measures the linear relationship between two dimension scores. Range: −1 to +1.<br>
+        <span>r &gt; 0.7</span> = strong positive &nbsp;|&nbsp;
+        <span>0.4–0.7</span> = moderate &nbsp;|&nbsp;
+        <span>&lt; 0.4</span> = weak &nbsp;|&nbsp;
+        <span>r &lt; 0</span> = negative relationship
+      </p>
+    </div>
+  </div>
+
+  <!-- 6. NPS -->
+  <div class="card">
+    <h2>6. Net Promoter Score (NPS)</h2>
+
+    <div class="formula-block">
+      <div class="formula-title">NPS Segmentation</div>
+      <table class="interp-table">
+        <tr><th>Score</th><th>Segment</th></tr>
+        <tr><td>9 – 10</td><td>Promoters</td></tr>
+        <tr><td>7 – 8</td><td>Passives</td></tr>
+        <tr><td>0 – 6</td><td>Detractors</td></tr>
+      </table>
+    </div>
+
+    <div class="formula-block">
+      <div class="formula-title">NPS Score</div>
+      <code class="formula-eq">NPS = ((Promoters − Detractors) / Total respondents) × 100</code>
+      <p class="formula-note">
+        Range: −100 to +100.<br>
+        <span>NPS &gt; 50</span> = Excellent &nbsp;|&nbsp;
+        <span>0–50</span> = Good &nbsp;|&nbsp;
+        <span>&lt; 0</span> = Needs improvement
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- REPORT -->
+<div id="tab-report" class="section">
+  <div class="card" style="text-align:center;padding:48px;">
+    <div style="font-size:3rem;margin-bottom:16px;">📄</div>
+    <h2 style="margin-bottom:12px;">Download Analysis Report</h2>
+    <p style="color:var(--muted);margin-bottom:24px;font-size:0.9rem;">
+      Generates a professional Word document (.docx) including all analysis results, insights, and recommendations.
+    </p>
+    <a href="/download-report" id="download-btn">
+      <button class="btn btn-green" style="font-size:1rem;padding:14px 32px;">⬇ Download Word Report (.docx)</button>
+    </a>
+  </div>
+</div>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
