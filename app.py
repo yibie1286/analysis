@@ -1,4 +1,5 @@
 import os
+import io
 import json
 import math
 import datetime
@@ -6,7 +7,7 @@ import tempfile
 import pandas as pd
 from flask import Flask, request, jsonify, render_template, send_file, Response
 from analysis import load_data, run_full_analysis
-from report import generate_word_report
+from report import generate_word_report, generate_amharic_report
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
@@ -14,6 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 ALLOWED_EXTENSIONS = {'xlsx', 'csv'}
 _last_result = {}
 _uploaded_df = {}
+_cleaned_df  = {}   # stores the post-mapping, post-cleaning df for SPSS export
 
 
 def sanitize(obj):
@@ -136,7 +138,7 @@ def upload():
                         break
 
         # Sanitize preview — KoboToolbox exports often have NaN in non-survey cols
-        preview_records = df.head(5).where(pd.notnull(df.head(5)), None).to_dict(orient='records')
+        preview_records = df.head(10).where(pd.notnull(df.head(10)), None).to_dict(orient='records')
 
         return safe_jsonify({
             'file_columns': file_cols,
@@ -163,6 +165,10 @@ def analyze():
     df = df.rename(columns=rename)
 
     try:
+        from analysis import validate_and_clean
+        df_clean, _ = validate_and_clean(df.copy())
+        _cleaned_df['df'] = df_clean
+
         result = run_full_analysis(df)
         _last_result.clear()
         _last_result.update(result)
@@ -173,14 +179,90 @@ def analyze():
 @app.route('/download-report')
 def download_report():
     if not _last_result:
-        return jsonify({'error': 'No analysis data. Please upload a file first.'}), 400
-    buf = generate_word_report(_last_result)
-    return send_file(
-        buf,
-        as_attachment=True,
-        download_name='WaterWorks_CSI_Report.docx',
-        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    )
+        return safe_jsonify({'error': 'No analysis data. Please upload a file first.'}), 400
+    buf = io.BytesIO(generate_word_report(_last_result))
+    return send_file(buf, as_attachment=True,
+        download_name='WaterWorks_CSI_Report_EN.docx',
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+@app.route('/download-report-am')
+def download_report_am():
+    if not _last_result:
+        return safe_jsonify({'error': 'No analysis data. Please upload a file first.'}), 400
+    buf = io.BytesIO(generate_amharic_report(_last_result))
+    return send_file(buf, as_attachment=True,
+        download_name='WaterWorks_CSI_Report_AM.docx',
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+
+@app.route('/download-spss')
+def download_spss():
+    """Export the cleaned, mapped dataset as an SPSS .sav file."""
+    if not _last_result or 'df' not in _cleaned_df:
+        return safe_jsonify({'error': 'No data available. Please upload and analyze first.'}), 400
+
+    try:
+        import pyreadstat
+        import os
+        import tempfile
+        from analysis import DIMENSIONS, ITEM_DESCRIPTIONS
+
+        likert_values = {
+            1.0: 'Very Dissatisfied', 2.0: 'Dissatisfied', 3.0: 'Neutral',
+            4.0: 'Satisfied', 5.0: 'Very Satisfied',
+        }
+
+        all_items = [col for cols in DIMENSIONS.values() for col in cols]
+        df = _cleaned_df['df'].copy()
+
+        export_cols = [c for c in all_items + ['NPS'] if c in df.columns]
+        export_df   = df[export_cols].copy()
+
+        var_labels   = {}
+        value_labels = {}
+        for col in export_cols:
+            export_df[col] = pd.to_numeric(export_df[col], errors='coerce') \
+                               .round().astype(float)
+            if col in all_items:
+                var_labels[col]   = ITEM_DESCRIPTIONS.get(col, col)
+                value_labels[col] = likert_values
+            elif col == 'NPS':
+                var_labels[col]   = 'Likelihood to recommend Water Works Corporation (0-10)'
+                value_labels[col] = {float(i): str(i) for i in range(11)}
+
+        col_labels_dict = {c: var_labels.get(c, c) for c in export_df.columns}
+
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.sav')
+        os.close(tmp_fd)
+
+        pyreadstat.write_sav(
+            export_df,
+            tmp_path,
+            variable_value_labels=value_labels,
+            column_labels=col_labels_dict,
+        )
+
+        return send_file(
+            tmp_path,
+            as_attachment=True,
+            download_name='WaterWorks_CSI_Data.sav',
+            mimetype='application/octet-stream',
+        )
+
+    except ImportError:
+        return safe_jsonify({'error': 'pyreadstat not installed. Run: pip install pyreadstat'}), 500
+    except Exception as e:
+        return safe_jsonify({'error': f'SPSS export failed: {str(e)}'}), 500
+
+
+@app.route('/download-pptx')
+def download_pptx():
+    return safe_jsonify({'error': 'PowerPoint export is not available yet.'}), 503
+
+@app.route('/download-pptx-am')
+def download_pptx_am():
+    return safe_jsonify({'error': 'PowerPoint export is not available yet.'}), 503
+
 
 if __name__ == '__main__':
     app.run(debug=True)

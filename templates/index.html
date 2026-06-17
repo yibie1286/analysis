@@ -269,6 +269,16 @@
   .col-pill.copied { background: var(--blue); color: white; border-color: var(--blue); }
   .map-hint { font-size: 0.75rem; color: var(--green); margin-top: 3px; }
 
+  /* Rating distribution */
+  .rating-bar-wrap { display:flex; align-items:center; gap:4px; min-width:120px; }
+  .rating-bar { height:10px; border-radius:4px; background:var(--blue); min-width:2px; transition:width 0.3s; }
+  .rating-pct { font-size:0.75rem; color:var(--muted); white-space:nowrap; }
+  .r1 { background:#e53935; }
+  .r2 { background:#fb8c00; }
+  .r3 { background:#fdd835; }
+  .r4 { background:#43a047; }
+  .r5 { background:#1a6fa8; }
+
   /* Formulas */
   .formula-block {
     background: #f8fafc;
@@ -481,6 +491,15 @@
   <div class="card">
     <h2>Correlation Matrix</h2>
     <div class="tbl-wrap" id="correlation-table"></div>
+  </div>
+
+  <!-- Rating Distribution -->
+  <div class="card">
+    <h2>Rating Distribution (1–5)</h2>
+    <h3>By Dimension</h3>
+    <div class="tbl-wrap" id="rating-dims-table"></div>
+    <h3>By Item</h3>
+    <div class="tbl-wrap" id="rating-items-table"></div>
   </div>
 
   <!-- NPS -->
@@ -743,11 +762,31 @@
   <div class="card" style="text-align:center;padding:48px;">
     <div style="font-size:3rem;margin-bottom:16px;">📄</div>
     <h2 style="margin-bottom:12px;">Download Analysis Report</h2>
-    <p style="color:var(--muted);margin-bottom:24px;font-size:0.9rem;">
-      Generates a professional Word document (.docx) including all analysis results, insights, and recommendations.
+    <p style="color:var(--muted);margin-bottom:32px;font-size:0.9rem;">
+      Download the full analysis report in English or Amharic ( አማርኛ), or export the cleaned dataset to SPSS.
     </p>
-    <a href="/download-report" id="download-btn">
-      <button class="btn btn-green" style="font-size:1rem;padding:14px 32px;">⬇ Download Word Report (.docx)</button>
+    <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+      <a href="/download-report">
+        <button class="btn btn-green" style="font-size:1rem;padding:14px 32px;">
+          🇬🇧 Download English Report (.docx)
+        </button>
+      </a>
+      <a href="/download-report-am">
+        <button class="btn" style="font-size:1rem;padding:14px 32px;background:#6a1b9a;">
+          🇪🇹 ሪፖርት ያውርዱ — አማርኛ (.docx)
+        </button>
+      </a>
+    </div>
+    <hr style="margin:32px auto;width:60%;border:none;border-top:1px solid var(--border);">
+    <h2 style="margin-bottom:12px;">Export Data for SPSS</h2>
+    <p style="color:var(--muted);margin-bottom:24px;font-size:0.9rem;">
+      Downloads a <strong>.sav</strong> file with variable labels, value labels (1=Very Dissatisfied … 5=Very Satisfied),
+      and NPS labels — ready to open directly in SPSS with no manual setup.
+    </p>
+    <a href="/download-spss">
+      <button class="btn" style="font-size:1rem;padding:14px 32px;background:#00695c;">
+        📊 Download SPSS Data File (.sav)
+      </button>
     </a>
   </div>
 </div>

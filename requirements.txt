@@ -8,3 +8,5 @@ matplotlib
 seaborn
 python-docx
 reportlab
+pyreadstat
+python-pptx

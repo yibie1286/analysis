@@ -269,6 +269,7 @@ function renderAll(data) {
   renderReliability(data);
   renderRegression(data);
   renderCorrelation(data);
+  renderRatingDistribution(data);
   renderNPS(data);
   renderCharts(data);
 }
@@ -281,11 +282,21 @@ function makeTable(headers, rows, cellFn) {
 }
 
 function renderPreview(data) {
-  previewCols = data.columns;
-  allPreviewRows = data.preview.map(r => previewCols.map(c => r[c] !== undefined ? r[c] : ''));
+  // Use raw upload preview if available (original column names before mapping),
+  // otherwise fall back to the analysis preview
+  const source = (uploadResponse && uploadResponse.preview && uploadResponse.preview.length > 0)
+    ? uploadResponse
+    : data;
+
+  previewCols = source.file_columns || source.columns || [];
+  const records = source.preview || [];
+  allPreviewRows = records.map(row => previewCols.map(c => {
+    const val = row[c];
+    return (val !== undefined && val !== null) ? val : '';
+  }));
   previewPage = 0;
   document.getElementById('preview-info').textContent =
-    `${data.n} rows × ${previewCols.length} columns`;
+    `${data.n} rows × ${previewCols.length} columns (showing first ${records.length})`;
   renderPreviewPage();
 }
 
@@ -320,7 +331,7 @@ function renderKPIs(data) {
     <div class="kpi"><div class="val">${data.n}</div><div class="lbl">Respondents</div></div>
     <div class="kpi ${csiClass}"><div class="val">${data.overall_csi}%</div><div class="lbl">Overall CSI</div></div>
     <div class="kpi"><div class="val">${data.overall_interp}</div><div class="lbl">Satisfaction Level</div></div>
-    ${data.regression ? `<div class="kpi"><div class="val">${(data.regression.r_squared * 100).toFixed(1)}%</div><div class="lbl">Variance Explained (R²)</div></div>` : ''}
+    ${data.regression ? `<div class="kpi"><div class="val">${(data.regression.adj_r_squared * 100).toFixed(1)}%</div><div class="lbl">Variance Explained (Adj. R²)</div></div>` : ''}
     ${data.nps ? `<div class="kpi"><div class="val">${data.nps.nps_score}</div><div class="lbl">NPS Score</div></div>` : ''}
   `;
 }
@@ -411,6 +422,42 @@ function renderCorrelation(data) {
   });
   html += '</table>';
   document.getElementById('correlation-table').innerHTML = html;
+}
+
+function ratingBar(count, pct, rating) {
+  const w = Math.max(pct, 1);
+  return `<div class="rating-bar-wrap">
+    <div class="rating-bar r${rating}" style="width:${w}px"></div>
+    <span class="rating-pct">${count} (${pct}%)</span>
+  </div>`;
+}
+
+function renderRatingDistribution(data) {
+  if (!data.rating_dims || !data.rating_items) return;
+
+  // Dimension table
+  let dimHtml = '<table><tr><th>Dimension</th><th>★1</th><th>★2</th><th>★3</th><th>★4</th><th>★5</th><th>N</th></tr>';
+  data.rating_dims.forEach(d => {
+    dimHtml += `<tr><td><strong>${d.Dimension}</strong></td>`;
+    for (let i = 1; i <= 5; i++) {
+      dimHtml += `<td>${ratingBar(d.counts[i], d.pcts[i], i)}</td>`;
+    }
+    dimHtml += `<td style="text-align:center;color:var(--muted)">${d.total}</td></tr>`;
+  });
+  dimHtml += '</table>';
+  document.getElementById('rating-dims-table').innerHTML = dimHtml;
+
+  // Item table
+  let itemHtml = '<table><tr><th>Item</th><th>Description</th><th>★1</th><th>★2</th><th>★3</th><th>★4</th><th>★5</th><th>N</th></tr>';
+  data.rating_items.forEach(d => {
+    itemHtml += `<tr><td><strong>${d.Item}</strong></td><td style="font-size:0.82rem;color:var(--muted)">${d.Description}</td>`;
+    for (let i = 1; i <= 5; i++) {
+      itemHtml += `<td>${ratingBar(d.counts[i], d.pcts[i], i)}</td>`;
+    }
+    itemHtml += `<td style="text-align:center;color:var(--muted)">${d.total}</td></tr>`;
+  });
+  itemHtml += '</table>';
+  document.getElementById('rating-items-table').innerHTML = itemHtml;
 }
 
 function renderNPS(data) {
