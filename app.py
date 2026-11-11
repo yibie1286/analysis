@@ -13,9 +13,10 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 ALLOWED_EXTENSIONS = {'xlsx', 'csv'}
-_last_result = {}
-_uploaded_df = {}
-_cleaned_df  = {}   # stores the post-mapping, post-cleaning df for SPSS export
+_last_result  = {}
+_uploaded_df  = {}
+_cleaned_df   = {}
+_compare_results = {}   # stores {year: result} for trend comparison
 
 
 def sanitize(obj):
@@ -298,6 +299,142 @@ def download_pptx():
 @app.route('/download-pptx-am')
 def download_pptx_am():
     return safe_jsonify({'error': 'PowerPoint export is not available yet.'}), 503
+
+
+@app.route('/compare-upload', methods=['POST'])
+def compare_upload():
+    """Upload a file for comparison — same flow as /upload but stores by year slot."""
+    if 'file' not in request.files:
+        return safe_jsonify({'error': 'No file provided'}), 400
+    file = request.files['file']
+    if not file.filename or not allowed_file(file.filename):
+        return safe_jsonify({'error': 'Invalid file type. Use .xlsx or .csv'}), 400
+
+    slot = request.form.get('slot', 'A')   # 'A' = first year, 'B' = second year
+    year = request.form.get('year', '2018')
+
+    suffix = '.' + file.filename.rsplit('.', 1)[1].lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        df = load_data(tmp_path)
+        expected   = EXPECTED_COLUMNS_2019 if year == '2019' else EXPECTED_COLUMNS_2018
+        col_labels = COLUMN_LABELS_2019    if year == '2019' else COLUMN_LABELS
+        file_cols  = list(df.columns)
+        required   = [c for c in expected if c != 'NPS']
+        already_mapped = all(c in file_cols for c in required)
+
+        suggestions = {}
+        for exp in expected:
+            suggestions[exp] = None
+            for fc in file_cols:
+                if fc.strip().upper() == exp.upper():
+                    suggestions[exp] = fc
+                    break
+            if not suggestions[exp]:
+                for fc in file_cols:
+                    if exp.lower() in fc.lower():
+                        suggestions[exp] = fc
+                        break
+
+        # Store df for this slot
+        _compare_results[f'df_{slot}'] = df
+        _compare_results[f'year_{slot}'] = year
+
+        return safe_jsonify({
+            'file_columns':     file_cols,
+            'expected_columns': expected,
+            'column_labels':    col_labels,
+            'suggestions':      suggestions,
+            'already_mapped':   already_mapped,
+            'n':                len(df),
+            'year':             year,
+            'slot':             slot,
+        })
+    except Exception as e:
+        return safe_jsonify({'error': str(e)}), 500
+    finally:
+        os.unlink(tmp_path)
+
+
+@app.route('/compare-analyze', methods=['POST'])
+def compare_analyze():
+    """Run analysis for both slots and return comparison result."""
+    mapping_a = request.json.get('mapping_a', {})
+    mapping_b = request.json.get('mapping_b', {})
+
+    df_a = _compare_results.get('df_A')
+    df_b = _compare_results.get('df_B')
+    year_a = _compare_results.get('year_A', '2018')
+    year_b = _compare_results.get('year_B', '2019')
+
+    if df_a is None or df_b is None:
+        return safe_jsonify({'error': 'Please upload both datasets before comparing.'}), 400
+
+    try:
+        df_a = df_a.rename(columns={v: k for k, v in mapping_a.items() if v and v in df_a.columns})
+        df_b = df_b.rename(columns={v: k for k, v in mapping_b.items() if v and v in df_b.columns})
+
+        result_a = run_full_analysis(df_a, year=year_a)
+        result_b = run_full_analysis(df_b, year=year_b)
+
+        # Build comparison — only common dimensions
+        dims_a = {r['Code']: r for r in result_a['csi']}
+        dims_b = {r['Code']: r for r in result_b['csi']}
+        common = [d for d in dims_a if d in dims_b]
+
+        comparison = []
+        for code in common:
+            csi_a = dims_a[code]['CSI (%)']
+            csi_b = dims_b[code]['CSI (%)']
+            change = round(csi_b - csi_a, 2)
+            comparison.append({
+                'Dimension':  dims_a[code]['Dimension'],
+                'Code':       code,
+                f'CSI_{year_a}': csi_a,
+                f'CSI_{year_b}': csi_b,
+                'Change':     change,
+                'Direction':  '▲' if change > 0 else ('▼' if change < 0 else '—'),
+            })
+
+        # Overall CSI change
+        overall_change = round(result_b['overall_csi'] - result_a['overall_csi'], 2)
+
+        # Auto insights
+        improved = [c for c in comparison if c['Change'] > 0 and c['Code'] != 'SAT']
+        declined = [c for c in comparison if c['Change'] < 0 and c['Code'] != 'SAT']
+        insights = []
+        if overall_change > 0:
+            insights.append(f"Overall CSI improved by {overall_change}% from {year_a} ({result_a['overall_csi']}%) to {year_b} ({result_b['overall_csi']}%).")
+        elif overall_change < 0:
+            insights.append(f"Overall CSI declined by {abs(overall_change)}% from {year_a} ({result_a['overall_csi']}%) to {year_b} ({result_b['overall_csi']}%). Investigation recommended.")
+        else:
+            insights.append(f"Overall CSI remained stable at {result_a['overall_csi']}% across both years.")
+
+        if improved:
+            top = max(improved, key=lambda x: x['Change'])
+            insights.append(f"{top['Dimension']} showed the greatest improvement (+{top['Change']}%).")
+        if declined:
+            worst = min(declined, key=lambda x: x['Change'])
+            insights.append(f"{worst['Dimension']} declined the most ({worst['Change']}%) and requires attention.")
+
+        return safe_jsonify({
+            'year_a':         year_a,
+            'year_b':         year_b,
+            'n_a':            result_a['n'],
+            'n_b':            result_b['n'],
+            'overall_csi_a':  result_a['overall_csi'],
+            'overall_csi_b':  result_b['overall_csi'],
+            'overall_change': overall_change,
+            'comparison':     comparison,
+            'insights':       insights,
+            'result_a':       result_a,
+            'result_b':       result_b,
+        })
+    except Exception as e:
+        return safe_jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

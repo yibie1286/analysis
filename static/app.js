@@ -642,3 +642,224 @@ function renderCorrHeatmap(data) {
     }
   });
 }
+
+
+// ── Year Comparison ───────────────────────────────────────────────────────────
+
+let compareSlots = { A: null, B: null };   // {df columns, expected_columns, suggestions, year}
+
+async function compareFileSelected(slot) {
+  const fileInput = document.getElementById(`compare-file-${slot.toLowerCase()}`);
+  const yearSel   = document.getElementById(`compare-year-${slot.toLowerCase()}`);
+  const statusEl  = document.getElementById(`compare-status-${slot.toLowerCase()}`);
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  statusEl.textContent = 'Uploading...';
+  statusEl.style.color = 'var(--muted)';
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('year', yearSel.value);
+  formData.append('slot', slot);
+
+  try {
+    const res  = await fetch('/compare-upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      statusEl.textContent = '⚠ ' + data.error;
+      statusEl.style.color = 'var(--orange)';
+      return;
+    }
+    compareSlots[slot] = data;
+    statusEl.textContent = `✓ ${data.n} rows loaded (${data.year})`;
+    statusEl.style.color = 'var(--green)';
+
+    // Build mapping form for this slot
+    buildCompareMappingForm(slot, data);
+
+    // Enable run button when both slots loaded and all required mapped
+    checkCompareReady();
+  } catch (err) {
+    statusEl.textContent = '⚠ ' + err.message;
+    statusEl.style.color = 'var(--orange)';
+  }
+}
+
+function buildCompareMappingForm(slot, data) {
+  const { file_columns, expected_columns, column_labels, suggestions } = data;
+  const slotLower  = slot.toLowerCase();
+  const alertEl    = document.getElementById(`compare-mapping-alert-${slotLower}`);
+  const formEl     = document.getElementById(`compare-mapping-form-${slotLower}`);
+  const containerEl = document.getElementById(`compare-mapping-${slotLower}`);
+
+  // Show the mapping panel
+  containerEl.style.display = '';
+
+  const autoCount = Object.values(suggestions).filter(v => v !== null).length;
+  alertEl.innerHTML = `<div class="alert alert-info" style="margin-bottom:10px;">
+    <strong>${autoCount} of ${expected_columns.length}</strong> columns auto-matched for Dataset ${slot}.
+    NPS is optional.
+  </div>`;
+
+  const optionsHtml = '<option value="">— Skip —</option>' +
+    file_columns.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  let html = '<div class="mapping-grid">';
+  html += '<div class="mapping-header">Variable</div>' +
+          '<div class="mapping-header">Description</div>' +
+          '<div class="mapping-header">Your Column</div>';
+
+  expected_columns.forEach(col => {
+    const dim       = DIM_OF(col);
+    const suggested = suggestions[col] || '';
+    const isOptional = col === 'NPS';
+    const matched   = suggested ? 'auto-matched' : '';
+    const desc      = (column_labels[col] || '').split('–').slice(1).join('–').trim();
+    html += `<div class="mapping-row">
+      <div><span class="dim-label dim-${dim}">${dim}</span><strong>${col}</strong>
+        ${isOptional ? '<em style="color:var(--muted);font-size:0.75rem"> (optional)</em>' : ''}
+      </div>
+      <div style="color:var(--muted);font-size:0.83rem;line-height:1.4">${desc}</div>
+      <div>
+        <select id="cmp-map-${slot}-${col}" class="${matched}"
+                onchange="checkCompareReady()">
+          ${optionsHtml}
+        </select>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  formEl.innerHTML = html;
+
+  // Pre-fill suggestions
+  expected_columns.forEach(col => {
+    const sel = document.getElementById(`cmp-map-${slot}-${col}`);
+    if (sel && suggestions[col]) sel.value = suggestions[col];
+  });
+
+  checkCompareReady();
+}
+
+function getCompareMapping(slot) {
+  const data = compareSlots[slot];
+  if (!data) return {};
+  const mapping = {};
+  data.expected_columns.forEach(col => {
+    const sel = document.getElementById(`cmp-map-${slot}-${col}`);
+    if (sel && sel.value) mapping[col] = sel.value;
+  });
+  return mapping;
+}
+
+function checkCompareReady() {
+  if (!compareSlots.A || !compareSlots.B) {
+    document.getElementById('compare-btn').disabled = true;
+    return;
+  }
+  // Check required columns mapped for both slots
+  const checkSlot = slot => {
+    const data     = compareSlots[slot];
+    const required = (data.expected_columns || []).filter(c => c !== 'NPS');
+    return required.every(c => {
+      const sel = document.getElementById(`cmp-map-${slot}-${c}`);
+      return sel && sel.value;
+    });
+  };
+  document.getElementById('compare-btn').disabled = !(checkSlot('A') && checkSlot('B'));
+}
+
+async function runComparison() {
+  if (!compareSlots.A || !compareSlots.B) return;
+  const spinner = document.getElementById('compare-spinner');
+  const errEl   = document.getElementById('compare-error');
+  spinner.style.display = 'block';
+  errEl.innerHTML = '';
+  document.getElementById('compare-btn').disabled = true;
+
+  const mapping_a = getCompareMapping('A');
+  const mapping_b = getCompareMapping('B');
+
+  try {
+    const res  = await fetch('/compare-analyze', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ mapping_a, mapping_b }),
+    });
+    const data = await res.json();
+    spinner.style.display = 'none';
+    document.getElementById('compare-btn').disabled = false;
+
+    if (data.error) {
+      errEl.innerHTML = `<div class="alert alert-warn">⚠ ${data.error}</div>`;
+      return;
+    }
+    renderComparison(data);
+  } catch (err) {
+    spinner.style.display = 'none';
+    document.getElementById('compare-btn').disabled = false;
+    errEl.innerHTML = `<div class="alert alert-warn">⚠ ${err.message}</div>`;
+  }
+}
+
+function renderComparison(data) {
+  const ya = data.year_a;
+  const yb = data.year_b;
+
+  document.getElementById('compare-results').style.display = '';
+
+  const changeColor = data.overall_change > 0 ? 'green' : data.overall_change < 0 ? 'orange' : '';
+  const changeSign  = data.overall_change > 0 ? '+' : '';
+  document.getElementById('compare-kpis').innerHTML = `
+    <div class="kpi"><div class="val">${data.n_a}</div><div class="lbl">Respondents ${ya}</div></div>
+    <div class="kpi"><div class="val">${data.overall_csi_a}%</div><div class="lbl">Overall CSI ${ya}</div></div>
+    <div class="kpi"><div class="val">${data.n_b}</div><div class="lbl">Respondents ${yb}</div></div>
+    <div class="kpi"><div class="val">${data.overall_csi_b}%</div><div class="lbl">Overall CSI ${yb}</div></div>
+    <div class="kpi ${changeColor}"><div class="val">${changeSign}${data.overall_change}%</div><div class="lbl">Overall Change</div></div>
+  `;
+
+  let html = `<table><tr>
+    <th>Dimension</th>
+    <th>CSI ${ya} (%)</th>
+    <th>CSI ${yb} (%)</th>
+    <th>Change</th>
+    <th></th>
+  </tr>`;
+  data.comparison.forEach(row => {
+    const keyA  = `CSI_${ya}`;
+    const keyB  = `CSI_${yb}`;
+    const color = row.Change > 0 ? 'color:var(--green)' : row.Change < 0 ? 'color:var(--orange)' : '';
+    html += `<tr>
+      <td><strong>${row.Dimension}</strong></td>
+      <td style="text-align:center">${row[keyA]}%</td>
+      <td style="text-align:center">${row[keyB]}%</td>
+      <td style="text-align:center;${color};font-weight:600">${row.Change > 0 ? '+' : ''}${row.Change}%</td>
+      <td style="text-align:center;font-size:1.2rem;${color}">${row.Direction}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  document.getElementById('compare-table').innerHTML = html;
+
+  destroyChart('compare');
+  const labels  = data.comparison.map(r => r.Dimension);
+  const valuesA = data.comparison.map(r => r[`CSI_${ya}`]);
+  const valuesB = data.comparison.map(r => r[`CSI_${yb}`]);
+
+  charts['compare'] = new Chart(document.getElementById('chart-compare'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: `${ya} CSI (%)`, data: valuesA, backgroundColor: '#1a6fa8', borderRadius: 4 },
+        { label: `${yb} CSI (%)`, data: valuesB, backgroundColor: '#2e7d32', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: true } },
+      scales: { y: { min: 0, max: 100, ticks: { stepSize: 20 } } }
+    }
+  });
+
+  document.getElementById('compare-insights-list').innerHTML =
+    data.insights.map(i => `<li>${i}</li>`).join('');
+}

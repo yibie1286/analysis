@@ -352,6 +352,7 @@
   <button onclick="showTab('preview', this)">🔍 Data Preview</button>
   <button onclick="showTab('analysis', this)">📊 Analysis Results</button>
   <button onclick="showTab('charts', this)">📈 Charts</button>
+  <button onclick="showTab('compare', this)">📊 Year Comparison</button>
   <button onclick="showTab('formulas', this)">🧮 Formulas</button>
   <button onclick="showTab('report', this)">📄 Download Report</button>
 </nav>
@@ -556,6 +557,81 @@
         <span style="font-size:0.78rem;color:var(--muted);">Fixed — scatter matrix</span>
       </div>
       <canvas id="chart-corr"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- COMPARE -->
+<div id="tab-compare" class="section">
+  <div class="card">
+    <h2>📊 Year-on-Year Comparison</h2>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:20px;">
+      Upload datasets for two survey years to compare CSI results side by side.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+      <!-- Slot A -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <h3 style="margin-bottom:12px;color:var(--blue);">📂 Dataset A (Earlier Year)</h3>
+        <select id="compare-year-a" style="width:100%;padding:8px;border-radius:5px;border:1px solid var(--border);margin-bottom:10px;">
+          <option value="2018">2018</option>
+          <option value="2019">2019</option>
+        </select>
+        <input type="file" id="compare-file-a" accept=".xlsx,.csv" style="width:100%;margin-bottom:8px;" onchange="compareFileSelected('A')"/>
+        <div id="compare-status-a" style="font-size:0.82rem;color:var(--muted);"></div>
+      </div>
+      <!-- Slot B -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
+        <h3 style="margin-bottom:12px;color:var(--blue);">📂 Dataset B (Later Year)</h3>
+        <select id="compare-year-b" style="width:100%;padding:8px;border-radius:5px;border:1px solid var(--border);margin-bottom:10px;">
+          <option value="2018">2018</option>
+          <option value="2019" selected>2019</option>
+        </select>
+        <input type="file" id="compare-file-b" accept=".xlsx,.csv" style="width:100%;margin-bottom:8px;" onchange="compareFileSelected('B')"/>
+        <div id="compare-status-b" style="font-size:0.82rem;color:var(--muted);"></div>
+      </div>
+    </div>
+
+    <div id="compare-mapping-a" style="display:none;">
+      <div class="card" style="border-left:4px solid var(--blue);">
+        <h3 style="color:var(--blue);margin-bottom:12px;">🔗 Map Columns — Dataset A</h3>
+        <div id="compare-mapping-alert-a"></div>
+        <div id="compare-mapping-form-a"></div>
+      </div>
+    </div>
+
+    <div id="compare-mapping-b" style="display:none;">
+      <div class="card" style="border-left:4px solid var(--green);">
+        <h3 style="color:var(--green);margin-bottom:12px;">🔗 Map Columns — Dataset B</h3>
+        <div id="compare-mapping-alert-b"></div>
+        <div id="compare-mapping-form-b"></div>
+      </div>
+    </div>
+
+    <button class="btn btn-green" id="compare-btn" onclick="runComparison()" disabled>
+      ⚡ Run Comparison
+    </button>
+    <div class="spinner" id="compare-spinner"></div>
+    <div id="compare-error" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="compare-results" style="display:none;">
+    <div class="kpi-grid" id="compare-kpis"></div>
+
+    <div class="card">
+      <h2>CSI Comparison by Dimension</h2>
+      <div class="tbl-wrap" id="compare-table"></div>
+    </div>
+
+    <div class="card">
+      <h2>Trend Chart</h2>
+      <canvas id="chart-compare" style="max-height:350px;"></canvas>
+    </div>
+
+    <div class="card" id="compare-insights-card">
+      <h2>🔍 Trend Insights</h2>
+      <ul class="insight-list" id="compare-insights-list"></ul>
     </div>
   </div>
 </div>
