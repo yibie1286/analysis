@@ -4,11 +4,21 @@ import statsmodels.api as sm
 import warnings
 warnings.filterwarnings('ignore')
 
+# ── 2018 schema ───────────────────────────────────────────────────────────────
 DIMENSIONS = {
     'SD':  ['SD1', 'SD2', 'SD3', 'SD4'],
     'TQ':  ['TQ1', 'TQ2', 'TQ3'],
     'PP':  ['PP1', 'PP2', 'PP3', 'PP4'],
     'COM': ['COM1', 'COM2', 'COM3'],
+    'SAT': ['SAT1', 'SAT2', 'SAT3'],
+}
+
+# ── 2019 schema (expanded questionnaire) ──────────────────────────────────────
+DIMENSIONS_2019 = {
+    'PP':  ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'],
+    'TQ':  ['TQ1', 'TQ2', 'TQ3', 'TQ4'],
+    'SD':  ['SD1', 'SD2', 'SD3', 'SD4', 'SD5', 'SD6'],
+    'COM': ['COM1', 'COM2', 'COM3', 'COM4', 'COM5'],
     'SAT': ['SAT1', 'SAT2', 'SAT3'],
 }
 
@@ -40,6 +50,32 @@ ITEM_DESCRIPTIONS = {
     'SAT3': 'Q6.3 – Overall working relationship',
 }
 
+ITEM_DESCRIPTIONS_2019 = {
+    'PP1':  'Q7.1 – Completion on schedule',
+    'PP2':  'Q7.2 – Completion within contract price',
+    'PP3':  'Q7.3 – Delay management effectiveness',
+    'PP4':  'Q7.4 – Resource utilization',
+    'PP5':  'Q7.5 – Scope change management',
+    'TQ1':  'Q7.6 – Construction quality',
+    'TQ2':  'Q7.7 – Engineering standards & specifications',
+    'TQ3':  'Q7.8 – Material quality',
+    'TQ4':  'Q7.9 – Technical problem-solving capability',
+    'SD1':  'Q7.10 – Service delivery transparency',
+    'SD2':  'Q7.11 – Accountability',
+    'SD3':  'Q7.12 – Responsiveness',
+    'SD4':  'Q7.13 – Staff competence',
+    'SD5':  'Q7.14 – Staff ethics & professionalism',
+    'SD6':  'Q7.15 – Understanding client needs',
+    'COM1': 'Q7.16 – Report timeliness',
+    'COM2': 'Q7.17 – Report quality',
+    'COM3': 'Q7.18 – Daily communication quality',
+    'COM4': 'Q7.19 – Meeting effectiveness',
+    'COM5': 'Q7.20 – Post-handover technical support (Retention Period)',
+    'SAT1': 'Q8.1 – Needs & expectations fulfillment',
+    'SAT2': 'Q8.2 – Overall service quality',
+    'SAT3': 'Q8.3 – Overall working relationship',
+}
+
 LIKERT_LABEL_MAP = {
     'በጣም አልረካሁም': 1, 'አልረካሁም': 2, 'በመጠኑ ረክቻለሁ': 3, 'ረክቻለሁ': 4, 'በጣም ረክቻለሁ': 5,
     'very dissatisfied': 1, 'dissatisfied': 2, 'neutral': 3,
@@ -47,6 +83,7 @@ LIKERT_LABEL_MAP = {
     '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
     '1 - very dissatisfied': 1, '2 - dissatisfied': 2, '3 - neutral': 3,
     '4 - satisfied': 4, '5 - very satisfied': 5,
+    'አይመለከተኝም': None, 'not applicable': None, 'n/a': None,
 }
 
 DIM_AM = {
@@ -66,8 +103,13 @@ INTERP_AM = {
 
 
 def r(val, digits=3):
-    """Safe round — converts numpy scalars to Python float first."""
     return round(float(val), digits)
+
+
+def get_schema(year='2018'):
+    if str(year) == '2019':
+        return DIMENSIONS_2019, ITEM_DESCRIPTIONS_2019
+    return DIMENSIONS, ITEM_DESCRIPTIONS
 
 
 def load_data(filepath):
@@ -85,7 +127,6 @@ def load_data(filepath):
 
 
 def coerce_likert(series):
-    """Convert a column to numeric 1-5, handling text labels from KoboToolbox."""
     numeric = pd.to_numeric(series, errors='coerce')
     mask = numeric.isna() & series.notna()
     if mask.any():
@@ -95,16 +136,17 @@ def coerce_likert(series):
 
 
 def _num(df, cols):
-    """Return a float64 DataFrame for the given columns — safe for .mean()."""
     available = [c for c in cols if c in df.columns]
     if not available:
         return pd.DataFrame(index=df.index, dtype=float)
     return df[available].apply(pd.to_numeric, errors='coerce').astype(float)
 
 
-def validate_and_clean(df):
+def validate_and_clean(df, dims=None):
+    if dims is None:
+        dims = DIMENSIONS
     errors = []
-    all_items = [col for cols in DIMENSIONS.values() for col in cols]
+    all_items = [col for cols in dims.values() for col in cols]
     missing_cols = [c for c in all_items if c not in df.columns]
     if missing_cols:
         errors.append(f"Missing columns: {', '.join(missing_cols)}")
@@ -125,14 +167,17 @@ def validate_and_clean(df):
     for col in all_items:
         col_mean = pd.to_numeric(df[col], errors='coerce').mean()
         fill_val = float(col_mean) if not pd.isna(col_mean) else 3.0
-        # Round to nearest integer so imputed values stay on the 1–5 scale
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(fill_val).round().astype(float)
 
     return df, errors
 
 
-def descriptive_stats(df):
-    all_items = [col for cols in DIMENSIONS.values() for col in cols]
+def descriptive_stats(df, dims=None, item_descs=None):
+    if dims is None:
+        dims = DIMENSIONS
+    if item_descs is None:
+        item_descs = ITEM_DESCRIPTIONS
+    all_items = [col for cols in dims.values() for col in cols]
     stats_list = []
     for col in all_items:
         if col not in df.columns:
@@ -142,7 +187,7 @@ def descriptive_stats(df):
             continue
         stats_list.append({
             'Item':        col,
-            'Description': ITEM_DESCRIPTIONS.get(col, col),
+            'Description': item_descs.get(col, col),
             'Mean':    round(float(col_data.mean()), 3),
             'Std Dev': round(float(col_data.std()),  3),
             'Min':     int(col_data.min()),
@@ -150,7 +195,7 @@ def descriptive_stats(df):
         })
 
     dim_stats = []
-    for dim, cols in DIMENSIONS.items():
+    for dim, cols in dims.items():
         num = _num(df, cols)
         if num.empty:
             continue
@@ -161,14 +206,15 @@ def descriptive_stats(df):
             'Mean':    r(float(scores.mean())),
             'Std Dev': r(float(scores.std())),
         })
-
     return stats_list, dim_stats
 
 
-def compute_csi(df):
+def compute_csi(df, dims=None):
+    if dims is None:
+        dims = DIMENSIONS
     results = []
     overall_means = []
-    for dim, cols in DIMENSIONS.items():
+    for dim, cols in dims.items():
         num = _num(df, cols)
         if num.empty:
             continue
@@ -180,21 +226,19 @@ def compute_csi(df):
         elif csi >= 40: interp = 'Neutral'
         else:           interp = 'Dissatisfied'
         results.append({
-            'Dimension':   DIMENSION_LABELS[dim],
-            'Code':        dim,
-            'Mean Score':  r(mean_score),
-            'CSI (%)':     r(csi, 2),
+            'Dimension':      DIMENSION_LABELS[dim],
+            'Code':           dim,
+            'Mean Score':     r(mean_score),
+            'CSI (%)':        r(csi, 2),
             'Interpretation': interp,
         })
 
     non_sat = [m for dim, m in overall_means if dim != 'SAT']
     overall_csi = (float(np.mean(non_sat)) / 5) * 100 if non_sat else 0.0
-
     if overall_csi >= 80:   overall_interp = 'Very Satisfied'
     elif overall_csi >= 60: overall_interp = 'Satisfied'
     elif overall_csi >= 40: overall_interp = 'Neutral'
     else:                   overall_interp = 'Dissatisfied'
-
     return results, r(overall_csi, 2), overall_interp
 
 
@@ -202,8 +246,6 @@ def cronbach_alpha(df, cols):
     num = _num(df, cols)
     if num.shape[1] < 2:
         return None
-    # validate_and_clean() imputes all missing values before this runs,
-    # so dropna() is a safety net only — should never drop rows in practice
     data = num.dropna()
     if data.shape[0] < 2 or data.shape[1] < 2:
         return None
@@ -216,9 +258,11 @@ def cronbach_alpha(df, cols):
     return r(max(float(alpha), 0.0), 4)
 
 
-def reliability_analysis(df):
+def reliability_analysis(df, dims=None):
+    if dims is None:
+        dims = DIMENSIONS
     results = []
-    for dim, cols in DIMENSIONS.items():
+    for dim, cols in dims.items():
         alpha = cronbach_alpha(df, cols)
         if alpha is None:
             continue
@@ -228,22 +272,27 @@ def reliability_analysis(df):
         elif alpha >= 0.6: interp = 'Questionable'
         else:              interp = 'Poor'
         results.append({
-            'Dimension':     DIMENSION_LABELS[dim],
-            'Code':          dim,
+            'Dimension':      DIMENSION_LABELS[dim],
+            'Code':           dim,
             'Cronbach Alpha': alpha,
             'Interpretation': interp,
         })
     return results
 
 
-def regression_analysis(df):
+def regression_analysis(df, dims=None):
+    if dims is None:
+        dims = DIMENSIONS
     predictors = {}
     for dim in ['SD', 'TQ', 'PP', 'COM']:
-        num = _num(df, DIMENSIONS[dim])
+        if dim not in dims:
+            continue
+        num = _num(df, dims[dim])
         if not num.empty:
             predictors[dim] = num.mean(axis=1)
 
-    sat_num = _num(df, DIMENSIONS['SAT'])
+    sat_cols = dims.get('SAT', [])
+    sat_num  = _num(df, sat_cols)
     if sat_num.empty or len(predictors) < 2:
         return None
 
@@ -259,12 +308,12 @@ def regression_analysis(df):
     for name in ['SD', 'TQ', 'PP', 'COM']:
         if name in model.params:
             coef_rows.append({
-                'Variable':   DIMENSION_LABELS[name],
-                'Code':       name,
-                'Beta':       r(model.params[name], 4),
-                'Std Error':  r(model.bse[name], 4),
-                't-value':    r(model.tvalues[name], 4),
-                'p-value':    r(model.pvalues[name], 4),
+                'Variable':    DIMENSION_LABELS[name],
+                'Code':        name,
+                'Beta':        r(model.params[name], 4),
+                'Std Error':   r(model.bse[name], 4),
+                't-value':     r(model.tvalues[name], 4),
+                'p-value':     r(model.pvalues[name], 4),
                 'Significant': 'Yes' if model.pvalues[name] < 0.05 else 'No',
             })
 
@@ -278,9 +327,11 @@ def regression_analysis(df):
     }
 
 
-def correlation_matrix(df):
+def correlation_matrix(df, dims=None):
+    if dims is None:
+        dims = DIMENSIONS
     dim_scores = {}
-    for dim, cols in DIMENSIONS.items():
+    for dim, cols in dims.items():
         num = _num(df, cols)
         if not num.empty:
             dim_scores[DIMENSION_LABELS[dim]] = num.mean(axis=1)
@@ -288,27 +339,30 @@ def correlation_matrix(df):
     return corr_df.to_dict()
 
 
-def rating_distribution(df):
-    all_items = [col for cols in DIMENSIONS.values() for col in cols]
+def rating_distribution(df, dims=None, item_descs=None):
+    if dims is None:
+        dims = DIMENSIONS
+    if item_descs is None:
+        item_descs = ITEM_DESCRIPTIONS
+    all_items = [col for cols in dims.values() for col in cols]
     item_dist = []
     for col in all_items:
         if col not in df.columns:
             continue
-        # Round to nearest integer so imputed means (e.g. 3.87) map to a valid rating
         col_data = pd.to_numeric(df[col], errors='coerce').round().dropna().astype(int)
         col_data = col_data[(col_data >= 1) & (col_data <= 5)]
-        total = int(len(col_data))
+        total  = int(len(col_data))
         counts = {str(i): int((col_data == i).sum()) for i in range(1, 6)}
         pcts   = {str(i): round(counts[str(i)] / total * 100, 1) if total else 0.0
                   for i in range(1, 6)}
         item_dist.append({
             'Item':        col,
-            'Description': ITEM_DESCRIPTIONS.get(col, col),
+            'Description': item_descs.get(col, col),
             'counts': counts, 'pcts': pcts, 'total': total,
         })
 
     dim_dist = []
-    for dim, cols in DIMENSIONS.items():
+    for dim, cols in dims.items():
         available = [c for c in cols if c in df.columns]
         if not available:
             continue
@@ -325,7 +379,6 @@ def rating_distribution(df):
             'Dimension': DIMENSION_LABELS[dim], 'Code': dim,
             'counts': counts, 'pcts': pcts, 'total': total,
         })
-
     return item_dist, dim_dist
 
 
@@ -356,16 +409,13 @@ def generate_insights(csi_results, regression_result,
         return DIM_AM.get(name, name) if lang == 'am' else name
 
     insights = []
-
     raw_interp   = csi_results[0]['Interpretation'] if csi_results else 'N/A'
     interp_label = INTERP_AM.get(raw_interp, raw_interp) if lang == 'am' else raw_interp
 
     insights.append(
-        f'አጠቃላይ CSI {overall_csi}% ሲሆን ደንበኞቹ "{interp_label}" ናቸው — '
-        f'ይህ የውሃ ሥራዎች ኮርፖሬሽን አገልግሎትን ያሳያል።'
+        f'አጠቃላይ CSI {overall_csi}% ሲሆን ደንበኞቹ "{interp_label}" ናቸው — ይህ የውሃ ሥራዎች ኮርፖሬሽን አገልግሎትን ያሳያል።'
         if lang == 'am' else
-        f"Overall CSI is {overall_csi}%, indicating customers are generally "
-        f"'{interp_label}' with Water Works Corporation's services."
+        f"Overall CSI is {overall_csi}%, indicating customers are generally '{interp_label}' with Water Works Corporation's services."
     )
 
     non_sat = [row for row in csi_results if row['Code'] != 'SAT']
@@ -414,20 +464,20 @@ def generate_insights(csi_results, regression_result,
             if lang == 'am' else
             f'Reliability is below acceptable threshold (α < 0.7) for: {names}. Consider reviewing questionnaire items.'
         )
-
     return insights
 
 
-def run_full_analysis(df, lang='en'):
-    df, errors       = validate_and_clean(df)
-    desc_items, desc_dims = descriptive_stats(df)
-    csi_results, overall_csi, overall_interp = compute_csi(df)
-    reliability      = reliability_analysis(df)
-    regression       = regression_analysis(df)
-    corr             = correlation_matrix(df)
-    nps              = nps_analysis(df)
-    item_dist, dim_dist = rating_distribution(df)
-    insights         = generate_insights(csi_results, regression, reliability, overall_csi, lang=lang)
+def run_full_analysis(df, lang='en', year='2018'):
+    dims, item_descs = get_schema(year)
+    df, errors            = validate_and_clean(df, dims=dims)
+    desc_items, desc_dims = descriptive_stats(df, dims=dims, item_descs=item_descs)
+    csi_results, overall_csi, overall_interp = compute_csi(df, dims=dims)
+    reliability           = reliability_analysis(df, dims=dims)
+    regression            = regression_analysis(df, dims=dims)
+    corr                  = correlation_matrix(df, dims=dims)
+    nps                   = nps_analysis(df)
+    item_dist, dim_dist   = rating_distribution(df, dims=dims, item_descs=item_descs)
+    insights              = generate_insights(csi_results, regression, reliability, overall_csi, lang=lang)
 
     return {
         'n':                 len(df),
@@ -444,6 +494,7 @@ def run_full_analysis(df, lang='en'):
         'rating_items':      item_dist,
         'rating_dims':       dim_dist,
         'insights':          insights,
+        'year':              str(year),
         'preview': (df.head(10)
                       .where(pd.notnull(df.head(10)), None)
                       .to_dict(orient='records')),

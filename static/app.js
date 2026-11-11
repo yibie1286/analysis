@@ -48,6 +48,7 @@ async function uploadFile() {
 
   const formData = new FormData();
   formData.append('file', selectedFile);
+  formData.append('year', document.getElementById('survey-year').value);
 
   try {
     const res = await fetch('/upload', { method: 'POST', body: formData });

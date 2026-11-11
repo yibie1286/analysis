@@ -50,20 +50,53 @@ def safe_jsonify(data):
         mimetype='application/json'
     )
 
-EXPECTED_COLUMNS = [
-    # Service Delivery (Q5.8–5.11)
+EXPECTED_COLUMNS_2018 = [
     'SD1', 'SD2', 'SD3', 'SD4',
-    # Technical Quality (Q5.5–5.7)
     'TQ1', 'TQ2', 'TQ3',
-    # Project Performance (Q5.1–5.4)
     'PP1', 'PP2', 'PP3', 'PP4',
-    # Communication (Q5.12–5.14)
     'COM1', 'COM2', 'COM3',
-    # Customer Satisfaction (Q6.1–6.3)
     'SAT1', 'SAT2', 'SAT3',
-    # NPS (Q7)
     'NPS',
 ]
+
+EXPECTED_COLUMNS_2019 = [
+    'PP1', 'PP2', 'PP3', 'PP4', 'PP5',
+    'TQ1', 'TQ2', 'TQ3', 'TQ4',
+    'SD1', 'SD2', 'SD3', 'SD4', 'SD5', 'SD6',
+    'COM1', 'COM2', 'COM3', 'COM4', 'COM5',
+    'SAT1', 'SAT2', 'SAT3',
+    'NPS',
+]
+
+COLUMN_LABELS_2019 = {
+    'PP1': 'PP1 – Completion on schedule (Q7.1)',
+    'PP2': 'PP2 – Completion within contract price (Q7.2)',
+    'PP3': 'PP3 – Delay management effectiveness (Q7.3)',
+    'PP4': 'PP4 – Resource utilization (Q7.4)',
+    'PP5': 'PP5 – Scope change management (Q7.5)',
+    'TQ1': 'TQ1 – Construction quality (Q7.6)',
+    'TQ2': 'TQ2 – Engineering standards & specifications (Q7.7)',
+    'TQ3': 'TQ3 – Material quality (Q7.8)',
+    'TQ4': 'TQ4 – Technical problem-solving (Q7.9)',
+    'SD1': 'SD1 – Service delivery transparency (Q7.10)',
+    'SD2': 'SD2 – Accountability (Q7.11)',
+    'SD3': 'SD3 – Responsiveness (Q7.12)',
+    'SD4': 'SD4 – Staff competence (Q7.13)',
+    'SD5': 'SD5 – Staff ethics & professionalism (Q7.14)',
+    'SD6': 'SD6 – Understanding client needs (Q7.15)',
+    'COM1': 'COM1 – Report timeliness (Q7.16)',
+    'COM2': 'COM2 – Report quality (Q7.17)',
+    'COM3': 'COM3 – Daily communication quality (Q7.18)',
+    'COM4': 'COM4 – Meeting effectiveness (Q7.19)',
+    'COM5': 'COM5 – Post-handover support (Q7.20)',
+    'SAT1': 'SAT1 – Needs & expectations fulfillment (Q8.1)',
+    'SAT2': 'SAT2 – Overall service quality (Q8.2)',
+    'SAT3': 'SAT3 – Overall working relationship (Q8.3)',
+    'NPS':  'NPS – Likelihood to recommend (Q9, 0–10)',
+}
+
+# Keep original 2018 labels
+EXPECTED_COLUMNS = EXPECTED_COLUMNS_2018
 
 COLUMN_LABELS = {
     # Service Delivery
@@ -116,38 +149,40 @@ def upload():
         df = load_data(tmp_path)
         _uploaded_df['df'] = df
 
-        file_cols = list(df.columns)
+        year = request.form.get('year', '2018')
+        _uploaded_df['year'] = year
 
-        # Auto-detect: if file already has expected column names, skip mapping
-        required = [c for c in EXPECTED_COLUMNS if c != 'NPS']
+        expected = EXPECTED_COLUMNS_2019 if year == '2019' else EXPECTED_COLUMNS_2018
+        col_labels = COLUMN_LABELS_2019 if year == '2019' else COLUMN_LABELS
+
+        file_cols = list(df.columns)
+        required  = [c for c in expected if c != 'NPS']
         already_mapped = all(c in file_cols for c in required)
 
-        # Build smart suggestions: case-insensitive + partial match
         suggestions = {}
-        for exp in EXPECTED_COLUMNS:
+        for exp in expected:
             suggestions[exp] = None
             for fc in file_cols:
                 if fc.strip().upper() == exp.upper():
                     suggestions[exp] = fc
                     break
             if not suggestions[exp]:
-                # partial match: column contains the code
                 for fc in file_cols:
                     if exp.lower() in fc.lower():
                         suggestions[exp] = fc
                         break
 
-        # Sanitize preview — KoboToolbox exports often have NaN in non-survey cols
         preview_records = df.head(10).where(pd.notnull(df.head(10)), None).to_dict(orient='records')
 
         return safe_jsonify({
-            'file_columns': file_cols,
-            'expected_columns': EXPECTED_COLUMNS,
-            'column_labels': COLUMN_LABELS,
-            'suggestions': suggestions,
-            'already_mapped': already_mapped,
-            'preview': preview_records,
-            'n': len(df),
+            'file_columns':    file_cols,
+            'expected_columns': expected,
+            'column_labels':   col_labels,
+            'suggestions':     suggestions,
+            'already_mapped':  already_mapped,
+            'preview':         preview_records,
+            'n':               len(df),
+            'year':            year,
         })
     except Exception as e:
         return safe_jsonify({'error': str(e)}), 500
@@ -163,13 +198,14 @@ def analyze():
 
     rename = {v: k for k, v in mapping.items() if v and v in df.columns}
     df = df.rename(columns=rename)
+    year = _uploaded_df.get('year', '2018')
 
     try:
         from analysis import validate_and_clean
         df_clean, _ = validate_and_clean(df.copy())
         _cleaned_df['df'] = df_clean
 
-        result = run_full_analysis(df)
+        result = run_full_analysis(df, year=year)
         _last_result.clear()
         _last_result.update(result)
         return safe_jsonify(result)

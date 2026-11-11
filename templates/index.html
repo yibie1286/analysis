@@ -376,7 +376,17 @@
     <div id="upload-status"></div>
     <div class="spinner" id="spinner"></div>
     <br/>
-    <button class="btn" id="upload-btn" onclick="uploadFile()" disabled>Analyze Data</button>  </div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <label style="font-size:0.88rem;color:var(--muted);font-weight:600;margin-right:8px;">Survey Year:</label>
+        <select id="survey-year" style="padding:8px 12px;border-radius:6px;border:1px solid var(--border);font-size:0.9rem;">
+          <option value="2018">2018 — Original questionnaire (14 items)</option>
+          <option value="2019">2019 — Expanded questionnaire (20 items)</option>
+        </select>
+      </div>
+      <button class="btn" id="upload-btn" onclick="uploadFile()" disabled>Analyze Data</button>
+    </div>
+  </div>
 
   <div class="card">
     <h2>Expected Data Format</h2>
